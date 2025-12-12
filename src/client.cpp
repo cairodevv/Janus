@@ -29,10 +29,10 @@ int main() {
         tcp::resolver resolver{ioc};
 
         // 👉 Replace with your VM’s external IP
-        auto results = resolver.resolve("YOUR_VM_EXTERNAL_IP", "9002");
+        auto results = resolver.resolve("10.152.0.5", "9002");
         websocket::stream<tcp::socket> ws{ioc};
         net::connect(ws.next_layer(), results);
-        ws.handshake("YOUR_VM_EXTERNAL_IP:9002", "/");
+        ws.handshake("10.152.0.5:9002", "/");
 
         std::atomic<bool> running{true};
         std::string prompt_cwd = "";
