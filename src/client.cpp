@@ -12,7 +12,7 @@ namespace websocket = beast::websocket;
 namespace net = boost::asio;
 using tcp = net::ip::tcp;
 
-// Naive JSON field extractor: expects {"key":"value"} pairs (flat)
+// Naive JSON field extractor: expects {"key":"value"} pairs
 static std::optional<std::string> get_field(const std::string& msg, const std::string& key) {
     std::string pattern = "\"" + key + "\":\"";
     auto p = msg.find(pattern);
@@ -27,15 +27,17 @@ int main() {
     try {
         net::io_context ioc;
         tcp::resolver resolver{ioc};
-        auto results = resolver.resolve("127.0.0.1", "9002");
+
+        // 👉 Replace with your VM’s external IP
+        auto results = resolver.resolve("YOUR_VM_EXTERNAL_IP", "9002");
         websocket::stream<tcp::socket> ws{ioc};
-        auto ep = net::connect(ws.next_layer(), results);
-        ws.handshake(ep.address().to_string() + ":" + std::to_string(ep.port()), "/");
+        net::connect(ws.next_layer(), results);
+        ws.handshake("YOUR_VM_EXTERNAL_IP:9002", "/");
 
         std::atomic<bool> running{true};
         std::string prompt_cwd = "";
 
-        // Reader: server -> console
+        // Reader thread: server -> console
         std::thread reader([&]() {
             try {
                 while (running.load()) {
@@ -45,7 +47,8 @@ int main() {
 
                     auto type = get_field(msg, "type");
                     if (!type.has_value()) {
-                        std::cout << msg << std::flush; // raw output
+                        // Raw output (command stdout/stderr)
+                        std::cout << msg << std::flush;
                         continue;
                     }
 
@@ -55,18 +58,14 @@ int main() {
                             prompt_cwd = cwd.value();
                             std::cout << "mini-shell:" << prompt_cwd << "> " << std::flush;
                         }
-                    } else if (type.value() == "out") {
-                        auto data = get_field(msg, "data");
-                        if (data.has_value()) {
-                            std::cout << data.value() << std::flush;
-                        }
                     } else if (type.value() == "eof") {
-                        std::cout << "\n" << "mini-shell:" << prompt_cwd << "> " << std::flush;
+                        std::cout << "\nmini-shell:" << prompt_cwd << "> " << std::flush;
                     } else if (type.value() == "error") {
                         auto m = get_field(msg, "message");
                         std::cerr << "error: " << (m.has_value() ? m.value() : msg) << "\n";
                         std::cout << "mini-shell:" << prompt_cwd << "> " << std::flush;
                     } else {
+                        // Unknown control message
                         std::cout << msg << std::flush;
                     }
                 }
@@ -96,10 +95,10 @@ int main() {
             if (!line.empty() && line.size() > 2 && line.rfind("> ", 0) == 0) {
                 std::string data = line.substr(2);
                 data.push_back('\n'); // typical terminal behavior
-                std::string msg = std::string("{\"type\":\"in\",\"data\":\"") + data + "\"}";
+                std::string msg = "{\"type\":\"in\",\"data\":\"" + data + "\"}";
                 ws.write(net::buffer(msg));
             } else {
-                std::string msg = std::string("{\"type\":\"cmd\",\"line\":\"") + line + "\"}";
+                std::string msg = "{\"type\":\"cmd\",\"line\":\"" + line + "\"}";
                 ws.write(net::buffer(msg));
             }
         }
